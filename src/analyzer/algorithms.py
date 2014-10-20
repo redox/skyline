@@ -1,29 +1,62 @@
 import pandas
 import numpy as np
 import scipy
-import statsmodels.api as sm
+from scipy import stats
 import traceback
 import logging
 from time import time
-from msgpack import unpackb, packb
-from redis import StrictRedis
-
-from settings import (
-    ALGORITHMS,
-    CONSENSUS,
-    FULL_DURATION,
-    MAX_TOLERABLE_BOREDOM,
-    MIN_TOLERABLE_LENGTH,
-    STALE_PERIOD,
-    REDIS_SOCKET_PATH,
-    ENABLE_SECOND_ORDER,
-    BOREDOM_SET_SIZE,
-)
 
 from algorithm_exceptions import *
 
+# This is the rolling duration that will be stored in Redis. Be sure to pick a
+# value that suits your memory capacity, your CPU capacity, and your overall
+# metrics count. Longer durations take a longer to analyze, but they can
+# help the algorithms reduce the noise and provide more accurate anomaly
+# detection.
+FULL_DURATION = 86400
+
+# This is the duration, in seconds, for a metric to become 'stale' and for
+# the analyzer to ignore it until new datapoints are added. 'Staleness' means
+# that a datapoint has not been added for STALE_PERIOD seconds.
+STALE_PERIOD = 500
+
+# This is the minimum length of a timeseries, in datapoints, for the analyzer
+# to recognize it as a complete series.
+MIN_TOLERABLE_LENGTH = 1
+
+# Sometimes a metric will continually transmit the same number. There's no need
+# to analyze metrics that remain boring like this, so this setting determines
+# the amount of boring datapoints that will be allowed to accumulate before the
+# analyzer skips over the metric. If the metric becomes noisy again, the
+# analyzer will stop ignoring it.
+MAX_TOLERABLE_BOREDOM = 100
+
+# By default, the analyzer skips a metric if it it has transmitted a single
+# number MAX_TOLERABLE_BOREDOM times. Change this setting if you wish the size
+# of the ignored set to be higher (ie, ignore the metric if there have only
+# been two different values for the past MAX_TOLERABLE_BOREDOM datapoints).
+# This is useful for timeseries that often oscillate between two values.
+BOREDOM_SET_SIZE = 1
+
+# These are the algorithms that the Analyzer will run. To add a new algorithm,
+# you must both define the algorithm in algorithms.py and add its name here.
+ALGORITHMS = [
+    'first_hour_average',
+    'mean_subtraction_cumulation',
+    'stddev_from_average',
+    'stddev_from_moving_average',
+    'least_squares',
+    'grubbs',
+    'histogram_bins',
+    'median_absolute_deviation',
+    'ks_test',
+]
+
+# This is the number of algorithms that must return True before a metric is
+# classified as anomalous.
+CONSENSUS = 6
+
 logger = logging.getLogger("AnalyzerLog")
-redis_conn = StrictRedis(unix_socket_path=REDIS_SOCKET_PATH)
 
 """
 This is no man's land. Do anything you want in here,
@@ -229,46 +262,6 @@ def ks_test(timeseries):
     return False
 
 
-def is_anomalously_anomalous(metric_name, ensemble, datapoint):
-    """
-    This method runs a meta-analysis on the metric to determine whether the
-    metric has a past history of triggering. TODO: weight intervals based on datapoint
-    """
-    # We want the datapoint to avoid triggering twice on the same data
-    new_trigger = [time(), datapoint]
-
-    # Get the old history
-    raw_trigger_history = redis_conn.get('trigger_history.' + metric_name)
-    if not raw_trigger_history:
-        redis_conn.set('trigger_history.' + metric_name, packb([(time(), datapoint)]))
-        return True
-
-    trigger_history = unpackb(raw_trigger_history)
-
-    # Are we (probably) triggering on the same data?
-    if (new_trigger[1] == trigger_history[-1][1] and
-            new_trigger[0] - trigger_history[-1][0] <= 300):
-                return False
-
-    # Update the history
-    trigger_history.append(new_trigger)
-    redis_conn.set('trigger_history.' + metric_name, packb(trigger_history))
-
-    # Should we surface the anomaly?
-    trigger_times = [x[0] for x in trigger_history]
-    intervals = [
-        trigger_times[i + 1] - trigger_times[i]
-        for i, v in enumerate(trigger_times)
-        if (i + 1) < len(trigger_times)
-    ]
-
-    series = pandas.Series(intervals)
-    mean = series.mean()
-    stdDev = series.std()
-
-    return abs(intervals[-1] - mean) > 3 * stdDev
-
-
 def run_selected_algorithm(timeseries, metric_name):
     """
     Filter timeseries and run selected algorithm.
@@ -289,11 +282,7 @@ def run_selected_algorithm(timeseries, metric_name):
         ensemble = [globals()[algorithm](timeseries) for algorithm in ALGORITHMS]
         threshold = len(ensemble) - CONSENSUS
         if ensemble.count(False) <= threshold:
-            if ENABLE_SECOND_ORDER:
-                if is_anomalously_anomalous(metric_name, ensemble, timeseries[-1][1]):
-                    return True, ensemble, timeseries[-1][1]
-            else:
-                return True, ensemble, timeseries[-1][1]
+            return True, ensemble, timeseries[-1][1]
 
         return False, ensemble, timeseries[-1][1]
     except:

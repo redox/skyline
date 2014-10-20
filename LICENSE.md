@@ -1,9 +1,3 @@
-Skyline
-----------
-* Author:: Abe Stanway (<abe@etsy.com>)
-* Copyright:: Copyright (c) 2013 Etsy Inc
-* License:: MIT
-
 The MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

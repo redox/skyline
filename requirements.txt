@@ -1,8 +1,9 @@
-redis==2.7.2
-hiredis==0.1.1
-python-daemon==1.6
-flask==0.9
-simplejson==2.0.9
-unittest2
+# Pandas Dependencies
+numpy>=1.7.1
+# Pandas Optional Dependencies
+scipy>=0.12.0
+# Pandas
+pandas>=0.12.0
+# Tests
+unittest2py3k
 mock
-#python-simple-hipchat

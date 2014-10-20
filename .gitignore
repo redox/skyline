@@ -4,3 +4,7 @@
 settings.py
 dump.rdb
 nohup.out
+
+# virtual env
+env
+env3
