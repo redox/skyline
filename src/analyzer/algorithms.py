@@ -265,6 +265,7 @@ def ks_test(timeseries):
 def run_selected_algorithm(timeseries):
     """
     Filter timeseries and run selected algorithm.
+    Return true in case of anomaly.
     """
     # Get rid of short series
     if len(timeseries) < MIN_TOLERABLE_LENGTH:
@@ -280,8 +281,7 @@ def run_selected_algorithm(timeseries):
 
     try:
         ensemble = [globals()[algorithm](timeseries) for algorithm in ALGORITHMS]
-        threshold = len(ensemble) - CONSENSUS
-        return ensemble.count(False) <= threshold
+        return ensemble.count(True) >= CONSENSUS
     except:
         logging.error("Algorithm error: " + traceback.format_exc())
         return False
