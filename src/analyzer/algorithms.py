@@ -262,7 +262,7 @@ def ks_test(timeseries):
     return False
 
 
-def run_selected_algorithm(timeseries, metric_name):
+def run_selected_algorithm(timeseries):
     """
     Filter timeseries and run selected algorithm.
     """
@@ -281,10 +281,7 @@ def run_selected_algorithm(timeseries, metric_name):
     try:
         ensemble = [globals()[algorithm](timeseries) for algorithm in ALGORITHMS]
         threshold = len(ensemble) - CONSENSUS
-        if ensemble.count(False) <= threshold:
-            return True, ensemble, timeseries[-1][1]
-
-        return False, ensemble, timeseries[-1][1]
+        return ensemble.count(False) <= threshold
     except:
         logging.error("Algorithm error: " + traceback.format_exc())
-        return False, [], 1
+        return False
