@@ -15,7 +15,7 @@ if data['serie'] is None:
   sys.exit(2)
 
 try:
-  sys.exit(0 if algorithms.run_selected_algorithm(data['serie']) else 1)
+  sys.exit(1 if algorithms.run_selected_algorithm(data['serie']) else 0)
 except TooShort:
   print("Too short")
   sys.exit(0)
